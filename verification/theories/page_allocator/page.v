@@ -1031,14 +1031,16 @@ Global Instance simpl_exist_page :
   SimplExist page (λ Q, ∃ (page_loc : loc) (page_sz : page_size) (page_val : list Z),
     Q (mk_page page_loc page_sz page_val)).
 Proof.
-  intros ? (? & ? & ? & ?). eexists (mk_page _ _ _). done.
+  intros e (page_loc & page_sz & page_val & H).
+  exists (mk_page page_loc page_sz page_val). done.
 Qed.
 
 Global Instance simpl_forall_page :
   SimplForall page 3 (λ Q, ∀ (page_loc : loc) (page_sz : page_size) (page_val : list Z),
     Q (mk_page page_loc page_sz page_val)).
 Proof.
-  intros ? ?. intros []. done.
+  intros e H [page_loc page_sz page_val].
+  apply H.
 Qed.
 
 Global Instance simpl_impl_page_size_smaller sz sz' :

@@ -7,4 +7,4 @@ skip_unsupported_features = false
 generate_dune_project = false
 lib_load_paths = ["./refinedrust/stdlib/", "./rust_proofs"]
 trust_debug = true
-register_all_adts=false
+register_all_adts = false
