@@ -120,6 +120,31 @@ Definition pte_get_pbmt_bits (pte : bv 64) : bv 2 :=
 Definition pte_get_napot_bits (pte : bv 64) : bv 1 :=
   bv_extract (pte_ppn_length + 10 + 2) 1 pte.
 
+Definition usize_modulus : Z := 2 ^ bits_per_int usize.
+
+Definition decode_page_table_entry_pointer (raw : Z) : Z :=
+  Z.modulo
+    (Z.shiftl (Z.land raw (Z_lunot (bits_per_int usize) 1023)) 2)
+    usize_modulus.
+
+Lemma decode_page_table_entry_pointer_in_usize raw :
+  (MinInt usize ≤ decode_page_table_entry_pointer raw ≤ MaxInt usize)%Z.
+Proof.
+  unfold decode_page_table_entry_pointer.
+  assert (Hmodulus : (0 < usize_modulus)%Z) by
+    (unfold usize_modulus, bits_per_int, bytes_per_int, bits_per_byte; cbn; lia).
+  pose proof
+    (Z.mod_pos_bound
+      (Z.shiftl (Z.land raw (Z_lunot (bits_per_int usize) 1023)) 2)
+      usize_modulus Hmodulus) as Hmod.
+  rewrite MinInt_eq MaxInt_eq.
+  unfold min_int, max_int, int_modulus, int_half_modulus, bits_per_int, bytes_per_int, bits_per_byte in *.
+  cbn in *.
+  unfold usize_modulus, bits_per_int, bytes_per_int, bits_per_byte in Hmod |- *.
+  cbn in Hmod |- *.
+  lia.
+Qed.
+
 
 
 (** Encode a physical address for a PPN entry *)
@@ -202,9 +227,39 @@ Inductive pte_flags_bits :=
 (** Physical page table entries *)
 Inductive page_table_entry :=
   | UnmappedPTE
-  | NextPTE (l : loc)
-  | DataPTE (l : loc)
+  | NextPTE (p : place_rfn loc)
+  | DataPTE (p : place_rfn loc)
 .
+Canonical Structure page_table_entryRT := directRT page_table_entry.
+
+Definition raw_page_table_entry_kind (raw : Z) : Z := Z.land raw 15.
+
+Definition raw_page_table_entry_is_unmapped (raw : Z) : Prop :=
+  raw_page_table_entry_kind raw = 0.
+
+Definition raw_page_table_entry_is_next (raw : Z) : Prop :=
+  raw_page_table_entry_kind raw = 1.
+
+Definition raw_page_table_entry_is_data (raw : Z) : Prop :=
+  raw_page_table_entry_kind raw ≠ 0 ∧ raw_page_table_entry_kind raw ≠ 1.
+
+(** Structural contract of [PageTableEntry::deserialize]. *)
+Inductive deserialized_page_table_entry (raw : Z) : page_table_entry -> Prop :=
+  | DeserializeUnmapped :
+      raw_page_table_entry_is_unmapped raw ->
+      deserialized_page_table_entry raw UnmappedPTE
+  | DeserializeNext : ∀ p : radium.loc.loc,
+      (MinInt usize ≤ radium.loc.loc_a p)%Z ->
+      (radium.loc.loc_a p ≤ MaxInt usize)%Z ->
+      radium.loc.loc_a p = decode_page_table_entry_pointer raw ->
+      raw_page_table_entry_is_next raw ->
+      deserialized_page_table_entry raw (NextPTE (PlaceIn p))
+  | DeserializeData : ∀ p : radium.loc.loc,
+      (MinInt usize ≤ radium.loc.loc_a p)%Z ->
+      (radium.loc.loc_a p ≤ MaxInt usize)%Z ->
+      radium.loc.loc_a p = decode_page_table_entry_pointer raw ->
+      raw_page_table_entry_is_data raw ->
+      deserialized_page_table_entry raw (DataPTE (PlaceIn p)).
 
 Record shared_page : Type := {
   shared_page_hv_address : Z;

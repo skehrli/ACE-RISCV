@@ -59,14 +59,15 @@ pub(super) enum PageTableEntry {
     #[rr::pattern("UnmappedPTE")]
     NotMapped,
     #[rr::pattern("NextPTE" $ "p")]
-    #[rr::refinement("-[ #p]")]
+    #[rr::refinement("*[p]")]
     PointerToNextPageTable(*mut usize),
     #[rr::pattern("DataPTE" $ "p")]
-    #[rr::refinement("-[ #p]")]
+    #[rr::refinement("*[p]")]
     PointerToDataPage(*mut usize),
 }
 
 impl PageTableEntry {
+    #[rr::ensures("deserialized_page_table_entry serialized_entry ret")]
     pub fn deserialize(serialized_entry: usize) -> Self {
         match serialized_entry & PAGE_TABLE_ENTRY_TYPE_MASK {
             PAGE_TABLE_ENTRY_NOT_MAPPED => Self::NotMapped,
@@ -77,8 +78,11 @@ impl PageTableEntry {
 
     /// Decodes a raw pointer from the page table entry. It is up to the user to decide how to deal with this pointer and check if it is
     /// valid and is in confidential or non-confidential memory.
+    #[rr::verify]
+    #[rr::exists("pointer")]
+    #[rr::returns("pointer")]
+    #[rr::ensures("pointer.(loc_a) = decode_page_table_entry_pointer raw_entry")]
     pub fn decode_pointer(raw_entry: usize) -> *mut usize {
-        // TODO: think how we can justify the integer-pointer cast
-        ((raw_entry & !CONFIGURATION_BIT_MASK) << ADDRESS_SHIFT) as *mut usize
+        core::ptr::without_provenance_mut((raw_entry & !CONFIGURATION_BIT_MASK) << ADDRESS_SHIFT)
     }
 }
