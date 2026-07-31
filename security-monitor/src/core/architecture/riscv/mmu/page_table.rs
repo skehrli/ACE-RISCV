@@ -29,11 +29,14 @@ use alloc::vec::Vec;
 ///
 /// Model: We model the page table by a `page_table_tree` which captures the inherent tree
 /// structure.
+#[rr::skip]
 #[rr::refined_by("pt_logical" : "page_table_tree")]
 /// Invariant: We assert that there exists a serialized byte-level representation of the page table
 /// tree in the form of a page.
+#[rr::context("MachineConfig")]
+#[rr::context("onceG Σ memory_layout")]
 #[rr::exists("pt_byte" : "page")]
-#[rr::invariant("is_byte_level_representation pt_logical p_byte")]
+#[rr::invariant("is_byte_level_representation pt_logical pt_byte")]
 pub struct PageTable {
     #[rr::field("pt_get_level pt_logical")]
     level: PageTableLevel,
@@ -53,7 +56,8 @@ pub struct PageTable {
 /// - the page table has unique ownership over all "reachable" memory
 /// - copying a page table from non-confidential memory only reads from non-confidential memory
 /// - if input to copy_.. is not a valid page table, fail correctly
-#[rr::skip]
+#[rr::context("MachineConfig")]
+#[rr::context("onceG Σ memory_layout")]
 impl PageTable {
     /// This functions copies recursively page table structure from non-confidential memory to confidential memory. It
     /// allocated a page in confidential memory for every page table. After this function executes, a valid page table
@@ -101,6 +105,7 @@ impl PageTable {
     #[rr::ensures("related_page_tables pt pt'")]
     #[rr::returns("#Ok(pt')")]   // (or out of memory)
     */
+    #[rr::skip]
     pub fn copy_from_non_confidential_memory(
         address: NonConfidentialMemoryAddress, paging_system: PagingSystem, level: PageTableLevel,
     ) -> Result<Self, Error> {
@@ -144,6 +149,7 @@ impl PageTable {
     #[rr::exists("res")]
     #[rr::returns("<#>@{result} res")]
     #[rr::returns("if_Ok res (λ tree, tree = make_empty_page_tree system level)")]
+    #[rr::skip]
     pub fn empty(paging_system: PagingSystem, level: PageTableLevel) -> Result<Self, Error> {
         let serialized_representation = PageAllocator::acquire_page(paging_system.memory_page_size(level))?.zeroize();
         let number_of_entries = serialized_representation.size().in_bytes() / paging_system.entry_size();
@@ -157,6 +163,7 @@ impl PageTable {
     ///
     /// The caller of this function must ensure that he synchronizes changes to page table configuration, i.e., by clearing address
     /// translation caches.
+    #[rr::skip]
     pub fn map_empty_page(
         &mut self, confidential_vm_address: &ConfidentialVmPhysicalAddress, page_size: &PageSize,
     ) -> Result<PageSize, Error> {
@@ -175,6 +182,7 @@ impl PageTable {
     ///
     /// The caller of this function must ensure that he synchronizes changes to page table configuration, i.e., by clearing address
     /// translation caches.
+    #[rr::skip]
     pub fn map_shared_page(
         &mut self, hypervisor_address: NonConfidentialMemoryAddress, confidential_vm_physical_address: &ConfidentialVmPhysicalAddress,
     ) -> Result<PageSize, Error> {
@@ -191,6 +199,7 @@ impl PageTable {
     ///
     /// The caller of this function must ensure that he synchronizes changes to page table configuration, i.e., by clearing address
     /// translation caches.
+    #[rr::skip]
     fn map_page(
         &mut self, confidential_vm_address: &ConfidentialVmPhysicalAddress, page_size: &PageSize, entry: LogicalPageTableEntry,
     ) -> Result<(), Error> {
@@ -227,6 +236,7 @@ impl PageTable {
     ///
     /// The caller of this function must ensure that he synchronizes changes to page table configuration, i.e., by clearing address
     /// translation caches.
+    #[rr::skip]
     pub fn unmap_shared_page(&mut self, address: &ConfidentialVmPhysicalAddress) -> Result<PageSize, Error> {
         let virtual_page_number = self.paging_system.vpn(address, self.level);
         match self.logical_representation.get_mut(virtual_page_number).ok_or_else(|| Error::PageTableConfiguration())? {
@@ -244,6 +254,7 @@ impl PageTable {
     /// for the requested guest physical address or the address translates to a shared page.
     ///
     /// This is a recursive function, which deepest execution is not larger than the number of paging system levels.
+    #[rr::skip]
     pub fn translate(&self, address: &ConfidentialVmPhysicalAddress) -> Result<ConfidentialMemoryAddress, Error> {
         let virtual_page_number = self.paging_system.vpn(address, self.level);
         match self.logical_representation.get(virtual_page_number).ok_or_else(|| Error::PageTableConfiguration())? {
@@ -260,6 +271,7 @@ impl PageTable {
 
     /// Recursively extends measurements of all data pages in the order from the page with the lowest to the highest guest physical address.
     /// Returns error if the page table is malformed, i.e., there is a shared page mapping.
+    #[rr::skip]
     pub fn finalize(
         &mut self, measurements: &mut StaticMeasurements, vm_memory_layout: &ConfidentialVmMemoryLayout, address: usize,
     ) -> Result<(), Error> {
@@ -286,13 +298,13 @@ impl PageTable {
     }
 
     /// Returns the physical address in confidential memory of the page table configuration.
-    #[rr::params("pt")]
-    #[rr::args("#pt")]
-    #[rr::returns("pt_get_serialized_loc pt")]
+    #[rr::verify]
+    #[rr::returns("pt_get_serialized_addr self")]
     pub fn address(&self) -> usize {
         self.serialized_representation.start_address()
     }
 
+    #[rr::skip]
     pub fn hgatp_mode(&self) -> HgatpMode {
         self.paging_system.hgatp_mode()
     }
@@ -304,6 +316,7 @@ impl PageTable {
     #[rr::requires("vpn < pt_number_of_entries pt")]
     /// Postcondition: The entry has been set correctly.
     #[rr::oberve("γ": "pt_set_entry pt vpn pte")]
+    #[rr::skip]
     fn set_entry(&mut self, virtual_page_number: usize, entry: LogicalPageTableEntry) {
         self.serialized_representation.write(self.paging_system.entry_size() * virtual_page_number, entry.serialize()).unwrap();
         let entry_to_remove = core::mem::replace(&mut self.logical_representation[virtual_page_number], entry);
@@ -315,6 +328,7 @@ impl PageTable {
     /// Recursively clears the entire page table configuration, releasing all pages to the PageAllocator.
     #[rr::params("x")]
     #[rr::args("x")]
+    #[rr::skip]
     pub fn deallocate(mut self) {
         let mut pages = Vec::with_capacity(self.logical_representation.len() + 1);
         pages.push(self.serialized_representation.deallocate());

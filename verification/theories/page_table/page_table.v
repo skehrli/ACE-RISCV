@@ -261,10 +261,13 @@ Inductive deserialized_page_table_entry (raw : Z) : page_table_entry -> Prop :=
       raw_page_table_entry_is_data raw ->
       deserialized_page_table_entry raw (DataPTE (PlaceIn p)).
 
-Record shared_page : Type := {
-  shared_page_hv_address : Z;
-  shared_page_sz : page_size;
+Record shared_page : Type := mk_shared_page {
+  shared_page_hv_addr : loc;
+  shared_page_cvm_addr : Z;
 }.
+Canonical Structure shared_pageRT := directRT shared_page.
+Global Instance shared_page_inhabited : Inhabited shared_page.
+Proof. exact (populate (mk_shared_page inhabitant inhabitant)). Qed.
 
 (** Level of page tables *)
 Inductive page_table_level : Type :=
@@ -324,6 +327,12 @@ with page_table_tree :=
       (entries : list logical_page_table_entry)
       (level : page_table_level)
 .
+Canonical Structure page_table_treeRT := directRT page_table_tree. 
+Canonical Structure logical_page_table_entryRT := directRT logical_page_table_entry. 
+Global Instance page_table_tree_inhabited : Inhabited page_table_tree.
+Proof. apply populate. exact (PageTableTree inhabitant inhabitant inhabitant inhabitant). Qed.
+Global Instance logical_page_table_entry_inhabited : Inhabited logical_page_table_entry.
+Proof. apply populate. exact NotValid. Qed.
 
 Definition pt_get_system (pt : page_table_tree) : paging_system :=
   match pt with
@@ -421,7 +430,7 @@ Definition encode_logical_page_table_entry_bv (pte : logical_page_table_entry) :
   | PageWithConfidentialVmData pg ptc ptp =>
       encode_pte pg.(page_loc).(loc_a) (to_pte_flags true ptc ptp)
   | PageSharedWithHypervisor sp ptc ptp =>
-      encode_pte sp.(shared_page_hv_address) (to_pte_flags true ptc ptp)
+      encode_pte sp.(shared_page_hv_addr).(loc_a) (to_pte_flags true ptc ptp)
   | NotValid =>
       encode_pte 0 pte_flags_invalid
   end
@@ -443,75 +452,75 @@ Definition is_byte_level_representation (pt_logical : page_table_tree) (pt_byte 
   (* The encoding of the entries matches the physical content of the pages *)
   pt_byte.(page_val) = encode_page_table_entries (pt_get_entries pt_logical)
 .
-
-(** Operations modifying the page table *)
-Definition pt_set_entry (pt : page_table_tree) (index : nat) (entry : logical_page_table_entry) : page_table_tree :=
-  match pt with
-  | PageTableTree system serialized_addr entries level =>
-      PageTableTree system serialized_addr (<[index := entry]> entries) level
-  end.
-Lemma pt_set_entry_system pt i en :
-  pt_get_system (pt_set_entry pt i en) = pt_get_system pt.
-Proof. destruct pt; done. Qed.
-Lemma pt_set_entry_addr pt i en :
-  pt_get_serialized_addr (pt_set_entry pt i en) = pt_get_serialized_addr pt.
-Proof. destruct pt; done. Qed.
-Lemma pt_set_entry_level pt i en :
-  pt_get_level (pt_set_entry pt i en) = pt_get_level pt.
-Proof. destruct pt; done. Qed.
-Lemma pt_set_entry_entries pt i en :
-  pt_get_entries (pt_set_entry pt i en) = <[i := en]> (pt_get_entries pt).
-Proof. destruct pt; done. Qed.
-
-(** Preservation of well-formedness when setting an entry *)
-Lemma pt_set_entry_wf pt pt' i en :
-  pt_set_entry pt i en = pt' →
-  logical_page_table_entry_level_is (page_table_level_lower $ pt_get_level pt) en →
-  logical_page_table_entry_has_system (pt_get_system pt) en →
-  page_table_wf pt →
-  page_table_wf pt'.
-Proof.
-  intros <- Hlevel Hsystem.
-  intros (Hlen & Hlv & Hsys).
-  split_and!.
-  - rewrite pt_set_entry_system pt_set_entry_level.
-    rewrite pt_set_entry_entries length_insert//.
-  - rewrite pt_set_entry_level.
-    destruct pt; simpl in *. split; first done.
-    apply Forall_Forall_cb. apply Forall_insert.
-    { destruct Hlv as [_ Ha]. apply Forall_Forall_cb. done. }
-    { done. }
-  - rewrite pt_set_entry_system.
-    destruct pt; simpl in *.
-    split; first done.
-    apply Forall_Forall_cb.
-    apply Forall_insert.
-    { destruct Hsys as [_ Hsys]. apply Forall_Forall_cb; done. }
-    { done. }
-Qed.
-
-(** ** Using a page table *)
-(** Translate an address according to the logical page table representation *)
-Definition page_table_translate_address (pt : page_table_tree)  (addr : Z) : option Z :=
-  None.
-
-(** State that the page table is represented at a particular root address in memory *)
-Definition pt_represented_at (σ : state) (pt : page_table_tree) (pt_addr : Z) :=
-  (* TODO *)
-  False.
-
-(** Address translation should be consistent between the logical and physical version *)
-Lemma page_table_translate_address_consistent_1 (pt : page_table_tree) addr pt_addr σ translated_addr :
-  pt_represented_at σ pt pt_addr →
-  page_table_translate_address pt addr = Some translated_addr →
-  translate_address pt_addr σ addr = Some translated_addr.
-Proof.
-Abort.
-
-Lemma page_table_translate_address_consistent_2 pt addr pt_addr σ translated_addr :
-  pt_represented_at σ pt pt_addr →
-  translate_address pt_addr σ addr = Some translated_addr →
-  page_table_translate_address pt addr = Some translated_addr
-.
-Proof.
-Abort.
+(**)
+(*(** Operations modifying the page table *)*)
+(*Definition pt_set_entry (pt : page_table_tree) (index : nat) (entry : logical_page_table_entry) : page_table_tree :=*)
+(*  match pt with*)
+(*  | PageTableTree system serialized_addr entries level =>*)
+(*      PageTableTree system serialized_addr (<[index := entry]> entries) level*)
+(*  end.*)
+(*Lemma pt_set_entry_system pt i en :*)
+(*  pt_get_system (pt_set_entry pt i en) = pt_get_system pt.*)
+(*Proof. destruct pt; done. Qed.*)
+(*Lemma pt_set_entry_addr pt i en :*)
+(*  pt_get_serialized_addr (pt_set_entry pt i en) = pt_get_serialized_addr pt.*)
+(*Proof. destruct pt; done. Qed.*)
+(*Lemma pt_set_entry_level pt i en :*)
+(*  pt_get_level (pt_set_entry pt i en) = pt_get_level pt.*)
+(*Proof. destruct pt; done. Qed.*)
+(*Lemma pt_set_entry_entries pt i en :*)
+(*  pt_get_entries (pt_set_entry pt i en) = <[i := en]> (pt_get_entries pt).*)
+(*Proof. destruct pt; done. Qed.*)
+(**)
+(*(** Preservation of well-formedness when setting an entry *)*)
+(*Lemma pt_set_entry_wf pt pt' i en :*)
+(*  pt_set_entry pt i en = pt' →*)
+(*  logical_page_table_entry_level_is (page_table_level_lower $ pt_get_level pt) en →*)
+(*  logical_page_table_entry_has_system (pt_get_system pt) en →*)
+(*  page_table_wf pt →*)
+(*  page_table_wf pt'.*)
+(*Proof.*)
+(*  intros <- Hlevel Hsystem.*)
+(*  intros (Hlen & Hlv & Hsys).*)
+(*  split_and!.*)
+(*  - rewrite pt_set_entry_system pt_set_entry_level.*)
+(*    rewrite pt_set_entry_entries length_insert//.*)
+(*  - rewrite pt_set_entry_level.*)
+(*    destruct pt; simpl in *. split; first done.*)
+(*    apply Forall_Forall_cb. apply Forall_insert.*)
+(*    { destruct Hlv as [_ Ha]. apply Forall_Forall_cb. done. }*)
+(*    { done. }*)
+(*  - rewrite pt_set_entry_system.*)
+(*    destruct pt; simpl in *.*)
+(*    split; first done.*)
+(*    apply Forall_Forall_cb.*)
+(*    apply Forall_insert.*)
+(*    { destruct Hsys as [_ Hsys]. apply Forall_Forall_cb; done. }*)
+(*    { done. }*)
+(*Qed.*)
+(**)
+(*(** ** Using a page table *)*)
+(*(** Translate an address according to the logical page table representation *)*)
+(*Definition page_table_translate_address (pt : page_table_tree)  (addr : Z) : option Z :=*)
+(*  None.*)
+(**)
+(*(** State that the page table is represented at a particular root address in memory *)*)
+(*Definition pt_represented_at (σ : state) (pt : page_table_tree) (pt_addr : Z) :=*)
+(*  (* TODO *)*)
+(*  False.*)
+(**)
+(*(** Address translation should be consistent between the logical and physical version *)*)
+(*Lemma page_table_translate_address_consistent_1 (pt : page_table_tree) addr pt_addr σ translated_addr :*)
+(*  pt_represented_at σ pt pt_addr →*)
+(*  page_table_translate_address pt addr = Some translated_addr →*)
+(*  translate_address pt_addr σ addr = Some translated_addr.*)
+(*Proof.*)
+(*Abort.*)
+(**)
+(*Lemma page_table_translate_address_consistent_2 pt addr pt_addr σ translated_addr :*)
+(*  pt_represented_at σ pt pt_addr →*)
+(*  translate_address pt_addr σ addr = Some translated_addr →*)
+(*  page_table_translate_address pt addr = Some translated_addr*)
+(*.*)
+(*Proof.*)
+(*Abort.*)

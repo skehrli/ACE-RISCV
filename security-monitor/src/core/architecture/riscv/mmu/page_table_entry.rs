@@ -12,22 +12,38 @@ use alloc::boxed::Box;
 
 /// Logical page table entry contains variants specific to the security monitor architecture. These new variants distinguish among certain
 /// types (e.g., shared page, confidential data page) that are not covered by the general RISC-V specification.
+#[rr::skip]
+// #[rr::context("MachineConfig")]
+// #[rr::context("onceG Σ memory_layout")]
 #[rr::refined_by("logical_page_table_entry")]
 pub(super) enum LogicalPageTableEntry {
     #[rr::pattern("PointerToNextPageTable" $ "next", "conf")]
-    #[rr::refinement("-[ #(#next); #conf]")]
-    PointerToNextPageTable(Box<PageTable>),
+    #[rr::refinement("(next, conf)")]
+    #[rr::refined_by("(next, conf)" : "directRT (page_table_tree * page_table_config)")]
+    PointerToNextPageTable(
+        #[rr::field("#next")]
+        Box<PageTable>
+    ),
     #[rr::pattern("PageWithConfidentialVmData" $ "p", "conf", "perm")]
-    #[rr::refinement("-[ #(#p); #conf; #perm]")]
-    PageWithConfidentialVmData(Box<Page<Allocated>>),
+    #[rr::refinement("(p, conf, perm)")]
+    #[rr::refined_by("(p, conf, perm)" : "directRT (page * page_table_config * page_table_permission)")]
+    PageWithConfidentialVmData(
+        #[rr::field("#p")]
+        Box<Page<Allocated>>
+    ),
     #[rr::pattern("PageSharedWithHypervisor" $ "sp", "conf", "perm")]
-    #[rr::refinement("-[ #sp; #conf; #perm]")]
-    PageSharedWithHypervisor(SharedPage),
-    #[rr::pattern("UnmappedPage")]
+    #[rr::refinement("(sp, conf, perm)")]
+    #[rr::refined_by("(sp, conf, perm)" : "directRT (shared_page * page_table_config * page_table_permission)")]
+    PageSharedWithHypervisor(
+        #[rr::field("sp")]
+        SharedPage
+    ),
+    #[rr::pattern("NotValid")]
     NotMapped,
 }
 
 impl LogicalPageTableEntry {
+    #[rr::verify]
     pub fn serialize(&self) -> usize {
         match self {
             Self::PointerToNextPageTable(page_table) => {

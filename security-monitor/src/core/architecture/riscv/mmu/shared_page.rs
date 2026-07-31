@@ -11,11 +11,18 @@ use crate::error::Error;
 /// the non-confidential memory is owned by the untrusted code (hypervisor). Thus, we must ensure the security monitor
 /// never dereferences this raw pointer, or if it must to do so, it must use atomic read/write to make sure that
 /// hardware ensures synchronized access to these memory locations.
+
+/// We require the ghost state for the global memory layout to be available.
+#[rr::context("onceG Σ memory_layout")]
+#[rr::refined_by("x" : "shared_page")]
 pub struct SharedPage {
+    #[rr::field("x.(shared_page_hv_addr)")]
     pub hypervisor_address: NonConfidentialMemoryAddress,
+    #[rr::field("x.(shared_page_cvm_addr)")]
     pub confidential_vm_address: ConfidentialVmPhysicalAddress,
 }
 
+#[rr::context("onceG Σ memory_layout")]
 impl SharedPage {
     // CoVE spec defines that the size of a shared page is always 4KiB.
     pub const SIZE: PageSize = PageSize::Size4KiB;
