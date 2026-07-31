@@ -205,6 +205,7 @@ Inductive page_table_entry :=
   | NextPTE (l : loc)
   | DataPTE (l : loc)
 .
+Canonical Structure page_table_entryRT := directRT page_table_entry.
 
 Record shared_page : Type := mk_shared_page {
   shared_page_hv_addr : loc;

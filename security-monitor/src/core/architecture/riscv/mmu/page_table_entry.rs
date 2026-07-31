@@ -58,12 +58,20 @@ impl LogicalPageTableEntry {
 pub(super) enum PageTableEntry {
     #[rr::pattern("UnmappedPTE")]
     NotMapped,
-    #[rr::pattern("NextPTE" $ "p")]
-    #[rr::refinement("-[ #p]")]
-    PointerToNextPageTable(*mut usize),
-    #[rr::pattern("DataPTE" $ "p")]
-    #[rr::refinement("-[ #p]")]
-    PointerToDataPage(*mut usize),
+    #[rr::pattern("NextPTE" $ "l")]
+    #[rr::refinement("l")]
+    #[rr::refined_by("l" : "loc")]
+    PointerToNextPageTable(
+        #[rr::field("l")]
+        *mut usize
+    ),
+    #[rr::pattern("DataPTE" $ "l")]
+    #[rr::refinement("l")]
+    #[rr::refined_by("l" : "loc")]
+    PointerToDataPage(
+        #[rr::field("l")]
+        *mut usize
+    ),
 }
 
 impl PageTableEntry {
