@@ -3,9 +3,16 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::error::Error;
 
-#[rr::skip]
+#[rr::refined_by("a" : "Z")]
 #[derive(PartialEq, PartialOrd, Clone, Copy)]
-pub struct ConfidentialVmPhysicalAddress(usize);
+// PEq
+#[rr::derive_instantiate("PEq" := "λ a b, bool_decide (a = b)")]
+// POrd
+#[rr::derive_instantiate("POrd" := "λ a b, Some (Z.compare a b)")]
+#[rr::derive_instantiate("POrd_eq_cons" := #proof "intros ? ? ?; solve_goal")]
+pub struct ConfidentialVmPhysicalAddress(
+    #[rr::field("a")] usize
+);
 
 impl ConfidentialVmPhysicalAddress {
     pub fn new(confidential_vm_physical_address: usize) -> Result<Self, Error> {
@@ -16,15 +23,19 @@ impl ConfidentialVmPhysicalAddress {
         Self(self.0 + offset)
     }
 
+    #[rr::returns("self")]
     pub fn usize(&self) -> usize {
         self.0
     }
 
+    #[rr::requires("align ≠ 0")]
+    #[rr::returns("bool_decide (self `rem` align = 0)")]
     pub fn is_aligned_to(&self, align: usize) -> bool {
         self.0 % align == 0
     }
 }
 
+#[rr::skip]
 impl core::fmt::Debug for ConfidentialVmPhysicalAddress {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "0x{:x}", self.0)
