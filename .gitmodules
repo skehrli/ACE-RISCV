@@ -7,3 +7,6 @@
 [submodule "verification/refinedrust"]
 	path = verification/refinedrust
 	url = https://gitlab.mpi-sws.org/lgaeher/refinedrust-dev.git
+[submodule "verification/ace-sail"]
+	path = verification/ace-sail
+	url = git-rts@gitlab.mpi-sws.org:skehrli1/ace-sail.git
