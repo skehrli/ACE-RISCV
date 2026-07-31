@@ -273,6 +273,12 @@ with page_table_tree :=
       (entries : list logical_page_table_entry)
       (level : page_table_level)
 .
+Canonical Structure page_table_treeRT := directRT page_table_tree. 
+Canonical Structure logical_page_table_entryRT := directRT logical_page_table_entry. 
+Global Instance page_table_tree_inhabited : Inhabited page_table_tree.
+Proof. apply populate. exact (PageTableTree inhabitant inhabitant inhabitant inhabitant). Qed.
+Global Instance logical_page_table_entry_inhabited : Inhabited logical_page_table_entry.
+Proof. apply populate. exact NotValid. Qed.
 
 Definition pt_get_system (pt : page_table_tree) : paging_system :=
   match pt with
