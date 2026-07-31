@@ -101,6 +101,10 @@ impl PageTableEntry {
 
     /// Decodes a raw pointer from the page table entry. It is up to the user to decide how to deal with this pointer and check if it is
     /// valid and is in confidential or non-confidential memory.
+    #[rr::only_spec]
+    #[rr::exists("pointer")]
+    #[rr::returns("pointer")]
+    #[rr::ensures("pointer.(loc_a) = decode_page_table_entry_pointer raw_entry")]
     pub fn decode_pointer(raw_entry: usize) -> *mut usize {
         // TODO: think how we can justify the integer-pointer cast
         ((raw_entry & !CONFIGURATION_BIT_MASK) << ADDRESS_SHIFT) as *mut usize

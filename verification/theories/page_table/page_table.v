@@ -120,7 +120,12 @@ Definition pte_get_pbmt_bits (pte : bv 64) : bv 2 :=
 Definition pte_get_napot_bits (pte : bv 64) : bv 1 :=
   bv_extract (pte_ppn_length + 10 + 2) 1 pte.
 
+Definition usize_modulus : Z := 2 ^ bits_per_int usize.
 
+Definition decode_page_table_entry_pointer (raw : Z) : Z :=
+  Z.modulo
+    (Z.shiftl (Z.land raw (Z_lunot (bits_per_int usize) 1023)) 2)
+    usize_modulus.
 
 (** Encode a physical address for a PPN entry *)
 Definition encode_physical_address_to_ppn (addr : Z) : bv pte_ppn_length :=
