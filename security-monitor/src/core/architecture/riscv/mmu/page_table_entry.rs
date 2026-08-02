@@ -91,6 +91,7 @@ pub(super) enum PageTableEntry {
 }
 
 impl PageTableEntry {
+    #[rr::ensures("deserialized_page_table_entry serialized_entry ret")]
     pub fn deserialize(serialized_entry: usize) -> Self {
         match serialized_entry & PAGE_TABLE_ENTRY_TYPE_MASK {
             PAGE_TABLE_ENTRY_NOT_MAPPED => Self::NotMapped,

@@ -212,6 +212,35 @@ Inductive page_table_entry :=
 .
 Canonical Structure page_table_entryRT := directRT page_table_entry.
 
+Definition raw_page_table_entry_kind (raw : Z) : Z := Z.land raw 15.
+
+Definition raw_page_table_entry_is_unmapped (raw : Z) : Prop :=
+  raw_page_table_entry_kind raw = 0.
+
+Definition raw_page_table_entry_is_next (raw : Z) : Prop :=
+  raw_page_table_entry_kind raw = 1.
+
+Definition raw_page_table_entry_is_data (raw : Z) : Prop :=
+  raw_page_table_entry_kind raw ≠ 0 ∧ raw_page_table_entry_kind raw ≠ 1.
+
+(** Structural contract of [PageTableEntry::deserialize]. *)
+Inductive deserialized_page_table_entry (raw : Z) : page_table_entry -> Prop :=
+  | DeserializeUnmapped :
+      raw_page_table_entry_is_unmapped raw ->
+      deserialized_page_table_entry raw UnmappedPTE
+  | DeserializeNext : ∀ p : radium.loc.loc,
+      (MinInt usize ≤ radium.loc.loc_a p)%Z ->
+      (radium.loc.loc_a p ≤ MaxInt usize)%Z ->
+      radium.loc.loc_a p = decode_page_table_entry_pointer raw ->
+      raw_page_table_entry_is_next raw ->
+      deserialized_page_table_entry raw (NextPTE p)
+  | DeserializeData : ∀ p : radium.loc.loc,
+      (MinInt usize ≤ radium.loc.loc_a p)%Z ->
+      (radium.loc.loc_a p ≤ MaxInt usize)%Z ->
+      radium.loc.loc_a p = decode_page_table_entry_pointer raw ->
+      raw_page_table_entry_is_data raw ->
+      deserialized_page_table_entry raw (DataPTE p).
+
 Record shared_page : Type := mk_shared_page {
   shared_page_hv_addr : loc;
   shared_page_cvm_addr : Z;
