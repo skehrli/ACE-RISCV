@@ -166,6 +166,12 @@ Record page_table_config : Type := mk_ptc {
 }.
 Global Instance page_table_config_inh : Inhabited page_table_config := populate (mk_ptc false false false false).
 
+Definition pt_config_none : page_table_config :=
+  mk_ptc false false false false.
+
+Definition pt_config_uad : page_table_config :=
+  mk_ptc true true false true.
+
 
 (** Permissions for this page table entry *)
 Record page_table_permission : Type := mk_ptp {
@@ -175,8 +181,14 @@ Record page_table_permission : Type := mk_ptp {
 }.
 Global Instance page_table_permission_inh : Inhabited page_table_permission := populate (mk_ptp false false false).
 
-Definition pt_permission_pointer : page_table_permission :=
+Definition pt_permission_none : page_table_permission :=
   mk_ptp false false false.
+
+Definition pt_permission_rwx : page_table_permission :=
+  mk_ptp true true true.
+
+Definition pt_permission_rw : page_table_permission :=
+  mk_ptp true true false.
 
 (** Encode page table flags *)
 Definition to_pte_flags (valid : bool) (ptc : page_table_config) (ptp : page_table_permission) : pte_flags := {|
@@ -406,7 +418,7 @@ Definition encode_logical_page_table_entry_bv (pte : logical_page_table_entry) :
   match pte with
   | PointerToNextPageTable pt ptc =>
       (* This is not a leaf *)
-      encode_pte (pt_get_serialized_addr pt) (to_pte_flags true ptc pt_permission_pointer)
+      encode_pte (pt_get_serialized_addr pt) (to_pte_flags true ptc pt_permission_none)
   | PageWithConfidentialVmData pg ptc ptp =>
       encode_pte pg.(page_loc).(loc_a) (to_pte_flags true ptc ptp)
   | PageSharedWithHypervisor sp ptc ptp =>

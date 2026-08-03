@@ -19,6 +19,7 @@ pub(super) enum LogicalPageTableEntry {
     #[rr::pattern("PointerToNextPageTable" $ "next", "conf")]
     #[rr::refinement("(next, conf)")]
     #[rr::refined_by("(next, conf)" : "directRT (page_table_tree * page_table_config)")]
+    #[rr::invariant("conf = pt_config_none")]
     PointerToNextPageTable(
         #[rr::field("#next")]
         Box<PageTable>
@@ -26,6 +27,8 @@ pub(super) enum LogicalPageTableEntry {
     #[rr::pattern("PageWithConfidentialVmData" $ "p", "conf", "perm")]
     #[rr::refinement("(p, conf, perm)")]
     #[rr::refined_by("(p, conf, perm)" : "directRT (page * page_table_config * page_table_permission)")]
+    #[rr::invariant("conf = pt_config_uad")]
+    #[rr::invariant("perm = pt_permission_rwx")]
     PageWithConfidentialVmData(
         #[rr::field("#p")]
         Box<Page<Allocated>>
@@ -33,6 +36,8 @@ pub(super) enum LogicalPageTableEntry {
     #[rr::pattern("PageSharedWithHypervisor" $ "sp", "conf", "perm")]
     #[rr::refinement("(sp, conf, perm)")]
     #[rr::refined_by("(sp, conf, perm)" : "directRT (shared_page * page_table_config * page_table_permission)")]
+    #[rr::invariant("conf = pt_config_uad")]
+    #[rr::invariant("perm = pt_permission_rw")]
     PageSharedWithHypervisor(
         #[rr::field("sp")]
         SharedPage
