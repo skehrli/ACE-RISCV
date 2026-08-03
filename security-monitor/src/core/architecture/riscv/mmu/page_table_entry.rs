@@ -49,6 +49,7 @@ pub(super) enum LogicalPageTableEntry {
 #[rr::context("MachineConfig")]
 #[rr::context("onceG Σ memory_layout")]
 impl LogicalPageTableEntry {
+    #[rr::ensures("serialize_lpte self ret")]
     pub fn serialize(&self) -> usize {
         match self {
             Self::PointerToNextPageTable(page_table) => {

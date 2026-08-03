@@ -190,6 +190,25 @@ Definition pt_permission_rwx : page_table_permission :=
 Definition pt_permission_rw : page_table_permission :=
   mk_ptp true true false.
 
+Definition serialize_pt_config (conf : page_table_config) : Z :=
+  (if conf.(pt_accessible_to_user) then 16 else 0) +
+  (if conf.(pt_is_global_mapping) then 32 else 0) +
+  (if conf.(pt_was_accessed) then 64 else 0) +
+  (if conf.(pt_is_dirty) then 128 else 0).
+
+Definition serialize_pt_permission (perm : page_table_permission) : Z :=
+  (if perm.(ptp_can_read) then 2 else 0) +
+  (if perm.(ptp_can_write) then 4 else 0) +
+  (if perm.(ptp_can_execute) then 8 else 0).
+
+Definition serialize_pte_word
+    (addr : Z) (conf : page_table_config) (perm : page_table_permission) : Z :=
+  Z.lor
+    (Z.lor
+      (Z.lor (Z.shiftr addr 2) (serialize_pt_config conf))
+      (serialize_pt_permission perm))
+    1.
+
 (** Encode page table flags *)
 Definition to_pte_flags (valid : bool) (ptc : page_table_config) (ptp : page_table_permission) : pte_flags := {|
   PTEValid := valid;
@@ -349,6 +368,25 @@ Definition pt_get_serialized_addr (pt : page_table_tree) : Z :=
 Definition pt_number_of_entries (pt : page_table_tree) : nat :=
   match pt with
   | PageTableTree system _ _ level => number_of_page_table_entries system level
+  end.
+
+(** Exact integer-level contract of [LogicalPageTableEntry::serialize]. *)
+Definition serialize_lpte (pte : logical_page_table_entry) (raw : Z) : Prop :=
+  match pte with
+  | PointerToNextPageTable next conf =>
+      conf = pt_config_none /\
+      raw = serialize_pte_word
+        (pt_get_serialized_addr next) conf pt_permission_none
+  | PageWithConfidentialVmData p conf perm =>
+      conf = pt_config_uad /\
+      perm = pt_permission_rwx /\
+      raw = serialize_pte_word p.(page_loc).(loc_a) conf perm
+  | PageSharedWithHypervisor sp conf perm =>
+      conf = pt_config_uad /\
+      perm = pt_permission_rw /\
+      raw = serialize_pte_word sp.(shared_page_hv_addr).(loc_a) conf perm
+  | NotValid =>
+      raw = 0
   end.
 
 (** Asserts that that the level of a logical page table/page table entry is given by [l], and it is properly decreasing for children. *)
