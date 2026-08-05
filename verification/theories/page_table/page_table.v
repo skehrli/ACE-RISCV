@@ -310,8 +310,49 @@ Definition paging_system_highest_level (system : paging_system) : page_table_lev
   | Sv48 => PTLevel4
   end.
 
+Definition page_table_level_valid (system : paging_system) (level : page_table_level) : Prop :=
+  match system, level with
+  | Sv48, PTLevel5 => False
+  | _, _ => True
+  end.
+
+Definition paging_system_data_page_size (level : page_table_level) : page_size :=
+  match level with
+  | PTLevel5 => Size128TiB
+  | PTLevel4 => Size512GiB
+  | PTLevel3 => Size1GiB
+  | PTLevel2 => Size2MiB
+  | PTLevel1 => Size4KiB
+  end.
+
+Definition page_table_page_size (system : paging_system) (level : page_table_level) : page_size :=
+  if decide (level = paging_system_highest_level system) then Size16KiB else Size4KiB.
+
 Definition number_of_page_table_entries (system : paging_system) (level : page_table_level) : nat :=
   if decide (level = paging_system_highest_level system) then 2048%nat else 512%nat.
+
+Lemma page_table_page_size_words system level :
+  page_table_level_valid system level ->
+  page_size_in_words_nat (page_table_page_size system level) =
+    number_of_page_table_entries system level.
+Proof.
+  destruct system, level; simpl; try contradiction;
+    rewrite page_size_in_words_nat_unfold; done.
+Qed.
+
+Lemma page_table_page_size_entry_count system level :
+  page_table_level_valid system level ->
+  Z.to_nat
+    (page_size_in_bytes_Z (page_table_page_size system level) `quot` 8) =
+    number_of_page_table_entries system level.
+Proof.
+  intros Hvalid.
+  rewrite <- (page_table_page_size_words system level Hvalid).
+  unfold page_size_in_bytes_nat, bytes_per_addr, bytes_per_addr_log.
+  cbn.
+  rewrite Nat2Z.inj_mul Z.mul_comm Z.quot_mul; last lia.
+  apply Nat2Z.id.
+Qed.
 
 (** Logical page table entries defined mutually inductively with page table trees *)
 Inductive logical_page_table_entry : Type :=
@@ -389,6 +430,46 @@ Definition serialize_lpte (pte : logical_page_table_entry) (raw : Z) : Prop :=
       raw = 0
   end.
 
+Lemma serialize_lpte_functional pte raw1 raw2 :
+  serialize_lpte pte raw1 ->
+  serialize_lpte pte raw2 ->
+  raw1 = raw2.
+Proof. destruct pte; simpl; naive_solver. Qed.
+
+Lemma serialize_lpte_not_valid :
+  serialize_lpte NotValid 0.
+Proof. done. Qed.
+
+Lemma Forall2_serialize_lpte_replicate_not_valid n :
+  Forall2 serialize_lpte (replicate n NotValid) (replicate n 0%Z).
+Proof. induction n; simpl; constructor; done. Qed.
+
+Lemma Forall2_serialize_lpte_lookup entries raws i entry :
+  Forall2 serialize_lpte entries raws ->
+  entries !! i = Some entry ->
+  exists raw, raws !! i = Some raw /\ serialize_lpte entry raw.
+Proof.
+  intros Hrel Hlookup.
+  eapply Forall2_lookup_l in Hrel as (raw & Hraw & Hserialize); last done.
+  naive_solver.
+Qed.
+
+Lemma Forall2_serialize_lpte_snoc entries raws entry raw :
+  Forall2 serialize_lpte entries raws ->
+  serialize_lpte entry raw ->
+  Forall2 serialize_lpte (entries ++ [entry]) (raws ++ [raw]).
+Proof.
+  intros Hrel Hserialize.
+  apply Forall2_app; first done.
+  constructor; done.
+Qed.
+
+Lemma Forall2_serialize_lpte_insert entries raws i entry raw :
+  Forall2 serialize_lpte entries raws ->
+  serialize_lpte entry raw ->
+  Forall2 serialize_lpte (<[i := entry]> entries) (<[i := raw]> raws).
+Proof. intros. by apply Forall2_insert. Qed.
+
 (** Asserts that that the level of a logical page table/page table entry is given by [l], and it is properly decreasing for children. *)
 Fixpoint page_table_level_is (l : option page_table_level) (p : page_table_tree) {struct p} :=
   match p with
@@ -420,17 +501,29 @@ with logical_page_table_entry_has_system (system : paging_system) (pte : logical
   end.
 
 
-(** Well-formedness of page table trees *)
-(* TODO: maybe make this intrinsic using dependent type *)
-Definition page_table_wf (pt : page_table_tree) :=
-  (* number of page table entries is determined by the level *)
-  number_of_page_table_entries (pt_get_system pt) (pt_get_level pt) = length (pt_get_entries pt) ∧
-  (* ensure that levels are decreasing *)
-  page_table_level_is (Some $ pt_get_level pt) pt ∧
-  (* ensure that the system is the same across the whole page table *)
-  page_table_tree_has_system (pt_get_system pt) pt
-.
-(* TODO: ensure everything is in confidential memory *)
+(** Well-formedness of completed page table trees. *)
+Fixpoint page_table_wf (pt : page_table_tree) {struct pt} : Prop :=
+  match pt with
+  | PageTableTree system _ entries level =>
+      page_table_level_valid system level /\
+      number_of_page_table_entries system level = length entries /\
+      Forall_cb (logical_page_table_entry_wf system level) entries
+  end
+with logical_page_table_entry_wf
+    (system : paging_system) (level : page_table_level)
+    (pte : logical_page_table_entry) {struct pte} : Prop :=
+  match pte with
+  | PointerToNextPageTable next _ =>
+      page_table_level_lower level = Some (pt_get_level next) /\
+      pt_get_system next = system /\
+      page_table_wf next
+  | PageWithConfidentialVmData page _ _ =>
+      page.(page_sz) = paging_system_data_page_size level
+  | PageSharedWithHypervisor _ _ _ =>
+      level = PTLevel1
+  | NotValid =>
+      True
+  end.
 
 Definition page_table_is_first_level (pt : page_table_tree) :=
   pt_get_level pt = paging_system_highest_level (pt_get_system pt).
@@ -440,14 +533,18 @@ Definition page_table_is_first_level (pt : page_table_tree) :=
 Definition make_empty_page_tree (system : paging_system) (level : page_table_level) (loc : Z) :=
   PageTableTree system loc (replicate (number_of_page_table_entries system level) NotValid) level.
 
+Definition is_empty_page_table_tree
+    (system : paging_system) (level : page_table_level) (pt : page_table_tree) : Prop :=
+  exists loc, pt = make_empty_page_tree system level loc.
+
 Lemma make_empty_page_tree_wf system level loc :
+  page_table_level_valid system level ->
   page_table_wf (make_empty_page_tree system level loc).
 Proof.
-  split_and!; simpl.
+  intros Hvalid. split_and!; simpl.
+  - done.
   - rewrite length_replicate//.
-  - split; first done. apply Forall_Forall_cb.
-    apply Forall_replicate. done.
-  - split; first done. apply Forall_Forall_cb.
+  - apply Forall_Forall_cb.
     apply Forall_replicate. done.
 Qed.
 
@@ -475,13 +572,33 @@ Definition encode_page_table_entries (entries : list logical_page_table_entry) :
 Definition is_byte_level_representation (pt_logical : page_table_tree) (pt_byte : page) :=
   (* The physical address matches up *)
   pt_byte.(page_loc).(loc_a) = pt_get_serialized_addr pt_logical ∧
+  (* Highest-level x4 page tables occupy 16KiB; lower levels occupy 4KiB. *)
+  pt_byte.(page_sz) = page_table_page_size (pt_get_system pt_logical) (pt_get_level pt_logical) ∧
   (* The logical representation is well-formed *)
   page_table_wf pt_logical ∧
-  (* We have a 16KiB page for Level 5, and 4KiB pages otherwise *)
-  (if pt_get_level pt_logical is PTLevel5 then pt_byte.(page_sz) = Size16KiB else pt_byte.(page_sz) = Size4KiB) ∧
   (* The encoding of the entries matches the physical content of the pages *)
-  pt_byte.(page_val) = encode_page_table_entries (pt_get_entries pt_logical)
+  Forall2 serialize_lpte (pt_get_entries pt_logical) pt_byte.(page_val)
 .
+
+Lemma make_empty_page_tree_is_byte_level_representation system level page :
+  page_table_level_valid system level ->
+  page.(page_sz) = page_table_page_size system level ->
+  page.(page_val) = zero_page page.(page_sz) ->
+  is_byte_level_representation
+    (make_empty_page_tree system level page.(page_loc).(loc_a)) page.
+Proof.
+  intros Hlevel Hsize Hvalue.
+  unfold is_byte_level_representation.
+  split.
+  - done.
+  - split.
+    + apply make_empty_page_tree_wf. done.
+    + split.
+      * done.
+      * simpl. rewrite Hvalue /zero_page Hsize.
+    rewrite (page_table_page_size_words system level Hlevel).
+    apply Forall2_serialize_lpte_replicate_not_valid.
+Qed.
 (**)
 (*(** Operations modifying the page table *)*)
 (*Definition pt_set_entry (pt : page_table_tree) (index : nat) (entry : logical_page_table_entry) : page_table_tree :=*)

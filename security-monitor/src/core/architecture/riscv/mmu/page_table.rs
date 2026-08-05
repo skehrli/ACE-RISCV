@@ -143,16 +143,17 @@ impl PageTable {
 
     /// Creates an empty page table for the given page table level. Returns error if there is not enough memory to allocate this data
     /// structure.
-    #[rr::params("system", "level")]
-    #[rr::args("system", "level")]
-    #[rr::exists("res")]
-    #[rr::returns("<#>@{result} res")]
-    #[rr::returns("if_Ok res (λ tree, tree = make_empty_page_tree system level)")]
-    #[rr::skip]
+    #[rr::context("onceG Σ unit")]
+    #[rr::requires(#iris "once_initialized π \"PAGE_ALLOCATOR\" (Some ())")]
+    #[rr::requires(#iris "∃ MEMORY_CONFIG, once_initialized π \"MEMORY_LAYOUT\" (Some MEMORY_CONFIG)")]
+    #[rr::requires("page_table_level_valid paging_system level")]
+    #[rr::ensures("if_Ok ret (is_empty_page_table_tree paging_system level)")]
     pub fn empty(paging_system: PagingSystem, level: PageTableLevel) -> Result<Self, Error> {
         let serialized_representation = PageAllocator::acquire_page(paging_system.memory_page_size(level))?.zeroize();
         let number_of_entries = serialized_representation.size().in_bytes() / paging_system.entry_size();
-        let logical_representation = (0..number_of_entries).map(|_| LogicalPageTableEntry::NotMapped).collect();
+        let logical_representation = (0..number_of_entries)
+            .map(#[rr::returns("NotValid")] |_| LogicalPageTableEntry::NotMapped)
+            .collect();
         Ok(Self { level, paging_system, serialized_representation, logical_representation })
     }
 

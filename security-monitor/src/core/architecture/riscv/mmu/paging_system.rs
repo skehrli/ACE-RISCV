@@ -40,12 +40,17 @@ impl PagingSystem {
         }
     }
 
+    #[rr::only_spec]
+    #[rr::requires("page_table_level_valid self level")]
+    #[rr::returns("page_table_page_size self level")]
     pub fn memory_page_size(&self, level: PageTableLevel) -> PageSize {
         assert!(level <= self.levels());
         if level == self.levels() { PageSize::Size16KiB } else { PageSize::Size4KiB }
     }
 
     // returns the size of the entry in bytes
+    #[rr::only_spec]
+    #[rr::returns("8")]
     pub fn entry_size(&self) -> usize {
         match self {
             PagingSystem::Sv48x4 => 8,
@@ -83,6 +88,8 @@ impl PagingSystem {
         vpn_to_rewrite | page_offset
     }
 
+    #[rr::only_spec]
+    #[rr::returns("paging_system_data_page_size level")]
     pub fn data_page_size(&self, level: PageTableLevel) -> PageSize {
         match level {
             PageTableLevel::Level5 => PageSize::Size128TiB,
