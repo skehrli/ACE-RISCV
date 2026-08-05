@@ -572,10 +572,10 @@ Definition encode_page_table_entries (entries : list logical_page_table_entry) :
 Definition is_byte_level_representation (pt_logical : page_table_tree) (pt_byte : page) :=
   (* The physical address matches up *)
   pt_byte.(page_loc).(loc_a) = pt_get_serialized_addr pt_logical ∧
-  (* Highest-level x4 page tables occupy 16KiB; lower levels occupy 4KiB. *)
-  pt_byte.(page_sz) = page_table_page_size (pt_get_system pt_logical) (pt_get_level pt_logical) ∧
   (* The logical representation is well-formed *)
   page_table_wf pt_logical ∧
+  (* Highest-level x4 page tables occupy 16KiB; lower levels occupy 4KiB. *)
+  pt_byte.(page_sz) = page_table_page_size (pt_get_system pt_logical) (pt_get_level pt_logical) ∧
   (* The encoding of the entries matches the physical content of the pages *)
   Forall2 serialize_lpte (pt_get_entries pt_logical) pt_byte.(page_val)
 .
